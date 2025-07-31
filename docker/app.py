@@ -20,7 +20,7 @@ DBPWD = os.environ.get("DBPWD") or "password"
 DATABASE = os.environ.get("DATABASE") or "employees"
 COLOR_FROM_ENV = os.environ.get('APP_COLOR') or "lime"
 DBPORT = int(os.environ.get("DBPORT", 3306))
-BACKGROUND_IMAGE_URL = os.environ.get("BACKGROUND_IMAGE_URL") or ""
+BACKGROUND_IMAGE_URL = os.environ.get("BACKGROUND_IMAGE_URL") or "https://clo835-finalproject-g8.s3.us-east-1.amazonaws.com/background.jpg"
 YOUR_NAME = os.environ.get("YOUR_NAME") or "CLO835 Student"
 
 # S3 Configuration
@@ -50,40 +50,26 @@ color_codes = {
 SUPPORTED_COLORS = ",".join(color_codes.keys())
 COLOR = random.choice(["red", "green", "blue", "blue2", "darkblue", "pink", "lime"])
 
-def download_background_image():
-    """Download background image from S3 bucket"""
-    if not BACKGROUND_IMAGE_URL or not S3_BUCKET:
-        logger.info("No background image URL or S3 bucket specified")
-        return None
-    
-    try:
-        s3_client = boto3.client('s3', region_name=AWS_REGION)
-        # Extract image name from URL
-        image_name = BACKGROUND_IMAGE_URL.split('/')[-1]
-        local_path = f"static/{image_name}"
-        
-        # Download image from S3
-        s3_client.download_file(S3_BUCKET, image_name, local_path)
-        logger.info(f"Background image downloaded successfully: {BACKGROUND_IMAGE_URL}")
-        return f"/static/{image_name}"
-    except ClientError as e:
-        logger.error(f"Error downloading background image: {e}")
-        return None
-    except Exception as e:
-        logger.error(f"Unexpected error downloading background image: {e}")
+def get_background_image():
+    """Return the S3 background image URL directly"""
+    if BACKGROUND_IMAGE_URL:
+        logger.info(f"Using background image: {BACKGROUND_IMAGE_URL}")
+        return BACKGROUND_IMAGE_URL
+    else:
+        logger.info("No background image URL specified")
         return None
 
 @app.route("/", methods=['GET', 'POST'])
 def home():
-    background_image = download_background_image()
+    background_image = get_background_image()
     return render_template('addemp.html', color=color_codes[COLOR], 
-                         background_image=background_image, name=YOUR_NAME)
+                         background_image=background_image, user_name=YOUR_NAME)
 
 @app.route("/about", methods=['GET','POST'])
 def about():
-    background_image = download_background_image()
+    background_image = get_background_image()
     return render_template('about.html', color=color_codes[COLOR], 
-                         background_image=background_image, name=YOUR_NAME)
+                         background_image=background_image, user_name=YOUR_NAME)
     
 @app.route("/addemp", methods=['POST'])
 def AddEmp():
@@ -104,13 +90,13 @@ def AddEmp():
         cursor.close()
 
     print("all modification done...")
-    background_image = download_background_image()
+    background_image = get_background_image()
     return render_template('addempoutput.html', name=emp_name, 
                          color=color_codes[COLOR], background_image=background_image)
 
 @app.route("/getemp", methods=['GET', 'POST'])
 def GetEmp():
-    background_image = download_background_image()
+    background_image = get_background_image()
     return render_template("getemp.html", color=color_codes[COLOR], 
                          background_image=background_image)
 
@@ -136,7 +122,7 @@ def FetchData():
     finally:
         cursor.close()
 
-    background_image = download_background_image()
+    background_image = get_background_image()
     return render_template("getempoutput.html", id=output["emp_id"], fname=output["first_name"],
                            lname=output["last_name"], interest=output["primary_skills"], 
                            location=output["location"], color=color_codes[COLOR],
@@ -165,4 +151,4 @@ if __name__ == '__main__':
     # Log background image URL
     logger.info(f"Background image URL: {BACKGROUND_IMAGE_URL}")
     
-    app.run(host='0.0.0.0',port=81,debug=True)  # Changed port to 81
+    app.run(host='0.0.0.0',port=81,debug=True)
