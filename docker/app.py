@@ -3,28 +3,38 @@ from pymysql import connections
 import os
 import random
 import argparse
-
+import boto3
+import logging
+from botocore.exceptions import ClientError
 
 app = Flask(__name__)
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Environment variables
 DBHOST = os.environ.get("DBHOST") or "localhost"
 DBUSER = os.environ.get("DBUSER") or "root"
-DBPWD = os.environ.get("DBPWD") or "passwors"
+DBPWD = os.environ.get("DBPWD") or "password"
 DATABASE = os.environ.get("DATABASE") or "employees"
 COLOR_FROM_ENV = os.environ.get('APP_COLOR') or "lime"
-DBPORT = int(os.environ.get("DBPORT"))
+DBPORT = int(os.environ.get("DBPORT", 3306))
+BACKGROUND_IMAGE_URL = os.environ.get("BACKGROUND_IMAGE_URL") or ""
+YOUR_NAME = os.environ.get("YOUR_NAME") or "CLO835 Student"
+
+# S3 Configuration
+S3_BUCKET = os.environ.get("S3_BUCKET") or ""
+AWS_REGION = os.environ.get("AWS_REGION") or "us-east-1"
 
 # Create a connection to the MySQL database
 db_conn = connections.Connection(
-    host= DBHOST,
+    host=DBHOST,
     port=DBPORT,
-    user= DBUSER,
-    password= DBPWD, 
-    db= DATABASE
-    
+    user=DBUSER,
+    password=DBPWD, 
+    db=DATABASE
 )
-output = {}
-table = 'employee';
 
 # Define the supported color codes
 color_codes = {
@@ -37,21 +47,43 @@ color_codes = {
     "lime": "#C1FF9C",
 }
 
-
-# Create a string of supported colors
 SUPPORTED_COLORS = ",".join(color_codes.keys())
-
-# Generate a random color
 COLOR = random.choice(["red", "green", "blue", "blue2", "darkblue", "pink", "lime"])
 
+def download_background_image():
+    """Download background image from S3 bucket"""
+    if not BACKGROUND_IMAGE_URL or not S3_BUCKET:
+        logger.info("No background image URL or S3 bucket specified")
+        return None
+    
+    try:
+        s3_client = boto3.client('s3', region_name=AWS_REGION)
+        # Extract image name from URL
+        image_name = BACKGROUND_IMAGE_URL.split('/')[-1]
+        local_path = f"static/{image_name}"
+        
+        # Download image from S3
+        s3_client.download_file(S3_BUCKET, image_name, local_path)
+        logger.info(f"Background image downloaded successfully: {BACKGROUND_IMAGE_URL}")
+        return f"/static/{image_name}"
+    except ClientError as e:
+        logger.error(f"Error downloading background image: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error downloading background image: {e}")
+        return None
 
 @app.route("/", methods=['GET', 'POST'])
 def home():
-    return render_template('addemp.html', color=color_codes[COLOR])
+    background_image = download_background_image()
+    return render_template('addemp.html', color=color_codes[COLOR], 
+                         background_image=background_image, name=YOUR_NAME)
 
 @app.route("/about", methods=['GET','POST'])
 def about():
-    return render_template('about.html', color=color_codes[COLOR])
+    background_image = download_background_image()
+    return render_template('about.html', color=color_codes[COLOR], 
+                         background_image=background_image, name=YOUR_NAME)
     
 @app.route("/addemp", methods=['POST'])
 def AddEmp():
@@ -61,31 +93,30 @@ def AddEmp():
     primary_skill = request.form['primary_skill']
     location = request.form['location']
 
-  
     insert_sql = "INSERT INTO employee VALUES (%s, %s, %s, %s, %s)"
     cursor = db_conn.cursor()
 
     try:
-        
         cursor.execute(insert_sql,(emp_id, first_name, last_name, primary_skill, location))
         db_conn.commit()
         emp_name = "" + first_name + " " + last_name
-
     finally:
         cursor.close()
 
     print("all modification done...")
-    return render_template('addempoutput.html', name=emp_name, color=color_codes[COLOR])
+    background_image = download_background_image()
+    return render_template('addempoutput.html', name=emp_name, 
+                         color=color_codes[COLOR], background_image=background_image)
 
 @app.route("/getemp", methods=['GET', 'POST'])
 def GetEmp():
-    return render_template("getemp.html", color=color_codes[COLOR])
-
+    background_image = download_background_image()
+    return render_template("getemp.html", color=color_codes[COLOR], 
+                         background_image=background_image)
 
 @app.route("/fetchdata", methods=['GET','POST'])
 def FetchData():
     emp_id = request.form['emp_id']
-
     output = {}
     select_sql = "SELECT emp_id, first_name, last_name, primary_skill, location from employee where emp_id=%s"
     cursor = db_conn.cursor()
@@ -94,7 +125,6 @@ def FetchData():
         cursor.execute(select_sql,(emp_id))
         result = cursor.fetchone()
         
-        # Add No Employee found form
         output["emp_id"] = result[0]
         output["first_name"] = result[1]
         output["last_name"] = result[2]
@@ -103,16 +133,16 @@ def FetchData():
         
     except Exception as e:
         print(e)
-
     finally:
         cursor.close()
 
+    background_image = download_background_image()
     return render_template("getempoutput.html", id=output["emp_id"], fname=output["first_name"],
-                           lname=output["last_name"], interest=output["primary_skills"], location=output["location"], color=color_codes[COLOR])
+                           lname=output["last_name"], interest=output["primary_skills"], 
+                           location=output["location"], color=color_codes[COLOR],
+                           background_image=background_image)
 
 if __name__ == '__main__':
-    
-    # Check for Command Line Parameters for color
     parser = argparse.ArgumentParser()
     parser.add_argument('--color', required=False)
     args = parser.parse_args()
@@ -128,9 +158,11 @@ if __name__ == '__main__':
     else:
         print("No command line argument or environment variable. Picking a Random Color =" + COLOR)
 
-    # Check if input color is a supported one
     if COLOR not in color_codes:
         print("Color not supported. Received '" + COLOR + "' expected one of " + SUPPORTED_COLORS)
         exit(1)
 
-    app.run(host='0.0.0.0',port=8080,debug=True)
+    # Log background image URL
+    logger.info(f"Background image URL: {BACKGROUND_IMAGE_URL}")
+    
+    app.run(host='0.0.0.0',port=81,debug=True)  # Changed port to 81
