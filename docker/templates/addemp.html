@@ -5,7 +5,7 @@
     <style>
         body {
             {% if background_image %}
-            background-image: url('/static/{{ background_image.split("/")[-1] }}');
+            background-image: url('{{ background_image }}');
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;

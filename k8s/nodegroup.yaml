@@ -1,0 +1,16 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: clo835
+  region: us-east-1
+
+nodeGroups:
+  - name: ng-lab-nodes
+    instanceType: t3.medium
+    desiredCapacity: 2
+    minSize: 1
+    maxSize: 3
+    volumeSize: 20
+    iam:
+      instanceRoleARN: arn:aws:iam::463516543158:role/LabRole
