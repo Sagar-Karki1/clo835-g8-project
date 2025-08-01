@@ -69,7 +69,7 @@ def download_background_image():
         # Check if image already exists locally
         if os.path.exists(local_path):
             logger.info(f"Background image already exists locally: {local_path}")
-            return f"/static/images/{filename}"
+            return f"/images/{filename}"  # ✅ Fixed: consistent URL path
         
         # Download the image
         logger.info(f"Downloading {S3_IMAGE_KEY} from bucket {S3_BUCKET}...")
